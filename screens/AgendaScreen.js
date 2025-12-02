@@ -1,45 +1,98 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { 
   View, 
   Text, 
-  Button, 
   StyleSheet, 
-  ScrollView, 
+  FlatList, 
   TouchableOpacity, 
-  Alert 
+  Alert,
+  ActivityIndicator,
+  RefreshControl
 } from 'react-native';
 import { db } from '../config/Firebase';
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { 
+  collection, 
+  query, 
+  orderBy, 
+  onSnapshot,
+  deleteDoc, 
+  doc
+} from 'firebase/firestore';
+import { useFocusEffect } from '@react-navigation/native';
+
+// 📅 Componente de Card memoizado (evita re-render desnecessário)
+const AppointmentCard = React.memo(({ item, onDelete }) => {
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardContent}>
+        <View style={styles.cardInfo}>
+          <Text style={styles.cardDateTime}>
+            📅 {item.data} — ⏰ {item.hora}
+          </Text>
+          <Text style={styles.cardDetails}>
+            👤 {item.nome} — 💅 {item.serv}
+          </Text>
+          {item.observacoes && (
+            <Text style={styles.cardNotes}>
+              📝 {item.observacoes}
+            </Text>
+          )}
+        </View>
+        <TouchableOpacity 
+          style={styles.deleteBtn} 
+          onPress={() => onDelete(item.id)}
+        >
+          <Text style={styles.deleteBtnText}>✕</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+});
 
 export default function AgendaScreen({ navigation }) {
   const [agendamentos, setAgendamentos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // 🔄 Carrega lista do Firebase
-  const carregarAgenda = async () => {
+  // 🔄 Carregar agendamentos com listener real-time
+  const carregarAgenda = useCallback(() => {
+    setLoading(true);
+
     try {
-      const q = await getDocs(collection(db, "agendamentos"));
-      let list = [];
-      q.forEach(docSnap => {
-        list.push({ id: docSnap.id, ...docSnap.data() });
+      const q = query(
+        collection(db, "agendamentos"),
+        orderBy("data", "desc")
+      );
+
+      // Usa onSnapshot para escutar mudanças em tempo real
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const list = [];
+        querySnapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        setAgendamentos(list);
+        setLoading(false);
+        setRefreshing(false);
+      }, (error) => {
+        console.error('Erro ao escutar agendamentos:', error.message);
+        Alert.alert("Erro", `Falha ao carregar agendamentos: ${error.message}`);
+        setLoading(false);
+        setRefreshing(false);
       });
 
-      // ➕ Ordenar por data e hora corretamente
-      list.sort((a, b) => {
-        const dataA = `${a.data} ${a.hora}`;
-        const dataB = `${b.data} ${b.hora}`;
-        return dataA.localeCompare(dataB);
-      });
-
-      setAgendamentos(list);
+      return unsubscribe;
     } catch (error) {
-      Alert.alert("Erro", "Falha ao carregar agendamentos");
+      console.error('Erro ao configurar listener:', error.message);
+      setLoading(false);
+      setRefreshing(false);
+      return null;
     }
-  };
+  }, []);
 
   // ❌ Excluir agendamento
-  const deletarAgendamento = (id) => {
+  const deletarAgendamento = useCallback((id) => {
     Alert.alert(
-      "Confirmar",
+      "Confirmar Exclusão",
       "Deseja realmente deletar este agendamento?",
       [
         { text: "Cancelar", style: "cancel" },
@@ -49,126 +102,230 @@ export default function AgendaScreen({ navigation }) {
           onPress: async () => {
             try {
               await deleteDoc(doc(db, "agendamentos", id));
-              carregarAgenda();
+              // Listener real-time atualiza automaticamente
             } catch (error) {
-              Alert.alert("Erro", "Não foi possível deletar");
+              Alert.alert("Erro", "Falha ao deletar agendamento");
             }
           }
         }
       ]
     );
+  }, []);
+
+  // 🔁 Pull to Refresh
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    carregarAgenda();
+  }, [carregarAgenda]);
+
+  // 🎯 Iniciar listener ao montar componente
+  useEffect(() => {
+    const unsubscribe = carregarAgenda();
+    
+    // Cleanup: desinscrever do listener ao desmontar
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [carregarAgenda]);
+
+  // 📋 Componente de lista vazia
+  const renderEmpty = () => {
+    if (loading) {
+      return (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color="#d63384" />
+          <Text style={styles.emptyText}>Carregando agenda...</Text>
+        </View>
+      );
+    }
+    
+    return (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyTitle}>📅 Agenda Vazia</Text>
+        <Text style={styles.emptySubtext}>
+          Toque no botão abaixo para criar um novo agendamento!
+        </Text>
+      </View>
+    );
   };
 
-  // 🔁 Carregar ao abrir tela
-  useEffect(() => { carregarAgenda(); }, []);
-
-  // 🔁 Recarregar quando voltar para a tela
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', carregarAgenda);
-    return unsubscribe;
-  }, [navigation]);
-
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      
-      <Text style={styles.title}>Agenda</Text>
+    <View style={styles.container}>
+      {/* Cabeçalho */}
+      <View style={styles.header}>
+        <Text style={styles.title}>📅 Agenda</Text>
+      </View>
 
-      {agendamentos.length === 0 && (
-        <Text style={{ marginTop:20, fontSize:16, opacity:0.5 }}>
-          Nenhum agendamento encontrado.
-        </Text>
-      )}
+      {/* Lista Otimizada com FlatList */}
+      <FlatList
+        data={agendamentos}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <AppointmentCard item={item} onDelete={deletarAgendamento} />
+        )}
+        contentContainerStyle={styles.listContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#d63384']}
+            tintColor="#d63384"
+          />
+        }
+        ListEmptyComponent={renderEmpty}
+        initialNumToRender={15}
+      />
 
-      {agendamentos.map((a) => (
-        <View key={a.id} style={styles.card}>
-          <View style={styles.cardContent}>
-
-            <View>
-              <Text style={styles.cardText}>
-                📅 {a.data} — ⏰ {a.hora}
-              </Text>
-              <Text style={styles.cardText}>
-                💅 {a.nome} — {a.serv}
-              </Text>
-            </View>
-
-            <TouchableOpacity 
-              style={styles.deleteBtn} 
-              onPress={() => deletarAgendamento(a.id)}
-            >
-              <Text style={styles.deleteBtnText}>X</Text>
-            </TouchableOpacity>
-
-          </View>
-        </View>
-      ))}
-
+      {/* Botão Fixo */}
       <TouchableOpacity 
         style={styles.newBtn}
         onPress={() => navigation.navigate("NovoAgendamento")}
       >
         <Text style={styles.newBtnText}>+ Novo Agendamento</Text>
       </TouchableOpacity>
-
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container:{ 
-    flexGrow:1,
-    alignItems:'center', 
-    padding:20 
+  container: { 
+    flex: 1,
+    backgroundColor: '#fff'
   },
-  title:{
-    fontSize:30, 
-    marginBottom:20, 
-    fontWeight:'bold',
-    color:'#d63384'
+  header: {
+    padding: 20,
+    paddingTop: 40,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0'
   },
-  card:{
-    backgroundColor:'#ffe6f7',
-    padding:15,
-    borderRadius:12,
-    width:'100%',
-    marginBottom:12,
-    borderColor:'#ffb3da',
-    borderWidth:1
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#d63384',
+    marginBottom: 8
   },
-  cardContent:{
-    flexDirection:'row',
-    justifyContent:'space-between',
-    alignItems:'center'
+  headerStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
   },
-  cardText:{
-    fontSize:16,
-    marginVertical:3,
-    color:'#444'
+  statsText: {
+    fontSize: 14,
+    color: '#666',
+    fontStyle: 'italic'
   },
-  deleteBtn:{
-    backgroundColor:'#ff4d4d',
-    width:40,
-    height:40,
-    borderRadius:8,
-    alignItems:'center',
-    justifyContent:'center'
+  weekText: {
+    fontSize: 14,
+    color: '#d63384',
+    fontWeight: '500',
+    backgroundColor: '#ffe6f7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12
   },
-  deleteBtnText:{
-    color:'white',
-    fontSize:18,
-    fontWeight:'bold'
+  listContainer: {
+    padding: 16,
+    paddingBottom: 80
   },
-  newBtn:{
-    backgroundColor:'#d63384',
-    marginTop:25,
-    padding:15,
-    borderRadius:12,
-    width:'100%',
-    alignItems:'center'
+  card: {
+    backgroundColor: '#ffe6f7',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderColor: '#ffb3da',
+    borderWidth: 1,
+    elevation: 2
   },
-  newBtnText:{
-    color:'white',
-    fontSize:18,
-    fontWeight:'bold'
+  cardContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start'
+  },
+  cardInfo: {
+    flex: 1,
+    marginRight: 12
+  },
+  cardDateTime: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4
+  },
+  cardDetails: {
+    fontSize: 15,
+    color: '#555',
+    marginBottom: 4
+  },
+  cardNotes: {
+    fontSize: 14,
+    color: '#777',
+    fontStyle: 'italic',
+    marginTop: 4
+  },
+  deleteBtn: {
+    backgroundColor: '#ff4d4d',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 1
+  },
+  deleteBtnText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold'
+  },
+  newBtn: {
+    backgroundColor: '#d63384',
+    margin: 16,
+    padding: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    position: 'absolute',
+    bottom: 0,
+    left: 16,
+    right: 16,
+    elevation: 5
+  },
+  newBtnText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold'
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#d63384',
+    marginBottom: 12
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 8
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    fontStyle: 'italic'
+  },
+  footer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  footerText: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: 8
   }
 });
