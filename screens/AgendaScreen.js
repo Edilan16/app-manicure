@@ -19,6 +19,15 @@ import {
   doc
 } from 'firebase/firestore';
 import { useFocusEffect } from '@react-navigation/native';
+function formatarData(data) {
+  // Se for Timestamp do Firestore
+  if (data?.toDate) {
+    return data.toDate().toLocaleDateString("pt-BR");
+  }
+
+  // Se for string normal
+  return data;
+}
 
 // 📅 Componente de Card memoizado (evita re-render desnecessário)
 const AppointmentCard = React.memo(({ item, onDelete }) => {
@@ -27,8 +36,9 @@ const AppointmentCard = React.memo(({ item, onDelete }) => {
       <View style={styles.cardContent}>
         <View style={styles.cardInfo}>
           <Text style={styles.cardDateTime}>
-            📅 {item.data} — ⏰ {item.hora}
+            📅 {formatarData(item.data)} — ⏰ {item.hora}
           </Text>
+
           <Text style={styles.cardDetails}>
             👤 {item.nome} — 💅 {item.serv}
           </Text>
