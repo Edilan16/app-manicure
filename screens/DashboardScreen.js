@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, FlatList } from 'react-native';
 import { db } from '../config/Firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 
 export default function DashboardScreen({ navigation }) {
   const [receita, setReceita] = useState(0);
@@ -9,9 +9,10 @@ export default function DashboardScreen({ navigation }) {
   const [pix, setPix] = useState(0);
   const [cartao, setCartao] = useState(0);
   const [dinheiro, setDinheiro] = useState(0);
+  const [extrato, setExtrato] = useState([]);
 
+  // Atualiza valores do dashboard
   useEffect(() => {
-    // Listener em tempo real
     const unsubscribe = onSnapshot(collection(db, "financeiro"), (snapshot) => {
       let totalReceita = 0;
       let totalDespesa = 0;
@@ -21,28 +22,18 @@ export default function DashboardScreen({ navigation }) {
 
       snapshot.docs.forEach(doc => {
         const data = doc.data();
-
-        // Valores
         const valorReceita = Number(data.receita) || 0;
         const valorDespesa = Number(data.despesa) || 0;
 
-        // Soma geral
         totalReceita += valorReceita;
         totalDespesa += valorDespesa;
 
-        // Soma por forma de pagamento (somente receitas)
         if (valorReceita > 0) {
           switch ((data.metodoPagamento || "").toLowerCase()) {
-            case "pix":
-              totalPix += valorReceita;
-              break;
+            case "pix": totalPix += valorReceita; break;
             case "cartão":
-            case "cartao":
-              totalCartao += valorReceita;
-              break;
-            case "dinheiro":
-              totalDinheiro += valorReceita;
-              break;
+            case "cartao": totalCartao += valorReceita; break;
+            case "dinheiro": totalDinheiro += valorReceita; break;
           }
         }
       });
@@ -54,13 +45,37 @@ export default function DashboardScreen({ navigation }) {
       setDinheiro(totalDinheiro);
     });
 
-    return () => unsubscribe(); // cleanup
+    return () => unsubscribe();
   }, []);
+
+  // Carrega últimos 10 lançamentos
+  useEffect(() => {
+    const q = query(collection(db, "financeiro"), orderBy("data", "desc"), limit(10));
+    const unsubscribeExtrato = onSnapshot(q, (snapshot) => {
+      const dados = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setExtrato(dados);
+    });
+
+    return () => unsubscribeExtrato();
+  }, []);
+
+  const renderItem = ({ item }) => {
+    const valor = Number(item.receita || item.despesa || 0);
+    const tipo = item.receita > 0 ? "Receita" : "Despesa";
+    return (
+      <View style={styles.extratoItem}>
+        <Text style={[styles.extratoTipo, { color: tipo === "Receita" ? 'green' : 'red' }]}>{tipo}</Text>
+        <Text style={styles.extratoValor}>R$ {valor.toFixed(2)}</Text>
+        <Text style={styles.extratoMetodo}>{item.metodoPagamento || "-"}</Text>
+      </View>
+    );
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Dashboard</Text>
 
+      {/* Cards de receita e despesa */}
       <View style={styles.card}>
         <Text style={styles.label}>Receita Total</Text>
         <Text style={styles.value}>R$ {receita.toFixed(2)}</Text>
@@ -76,6 +91,7 @@ export default function DashboardScreen({ navigation }) {
         <Text style={styles.valueTotal}>R$ {(receita - despesa).toFixed(2)}</Text>
       </View>
 
+      {/* Formas de pagamento */}
       <Text style={[styles.title, { marginTop: 30 }]}>Formas de Pagamento</Text>
       <View style={styles.cardInfo}>
         <Text style={styles.labelInfo}>Pix</Text>
@@ -90,6 +106,17 @@ export default function DashboardScreen({ navigation }) {
         <Text style={styles.valueInfo}>R$ {dinheiro.toFixed(2)}</Text>
       </View>
 
+      {/* Últimos lançamentos */}
+      <Text style={[styles.title, { marginTop: 30 }]}>Últimos Lançamentos</Text>
+      <FlatList
+        data={extrato}
+        keyExtractor={item => item.id}
+        renderItem={renderItem}
+        scrollEnabled={false} // evita conflito com ScrollView
+        style={{ width: '100%' }}
+      />
+
+      {/* Botões de navegação */}
       <TouchableOpacity
         style={styles.buttonPrimary}
         onPress={() => navigation.navigate('Financeiro')}
@@ -119,6 +146,10 @@ const styles = StyleSheet.create({
   cardInfo: { width: '100%', padding: 15, backgroundColor: '#fff3e0', borderRadius: 10, marginTop: 10, borderWidth: 1, borderColor: '#f9c27b' },
   labelInfo: { fontSize: 18, fontWeight: '600' },
   valueInfo: { fontSize: 22, fontWeight: 'bold', marginTop: 5 },
+  extratoItem: { flexDirection: 'row', justifyContent: 'space-between', padding: 12, borderBottomWidth: 1, borderBottomColor: '#ccc', width: '100%' },
+  extratoTipo: { fontSize: 16, fontWeight: '600' },
+  extratoValor: { fontSize: 16, fontWeight: 'bold' },
+  extratoMetodo: { fontSize: 14, color: '#555' },
   buttonPrimary: { width: '100%', backgroundColor: '#1565c0', padding: 15, borderRadius: 10, marginTop: 25, alignItems: 'center' },
   buttonSecondary: { width: '100%', backgroundColor: '#00897b', padding: 15, borderRadius: 10, marginTop: 10, alignItems: 'center' },
   buttonText: { color: '#fff', fontSize: 18, fontWeight: '600' },

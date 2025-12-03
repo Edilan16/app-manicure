@@ -1,164 +1,134 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  Button,
-  StyleSheet,
-  Alert,
-  TouchableOpacity,
-} from "react-native";
-import { db } from "../config/Firebase";
-import { collection, addDoc } from "firebase/firestore";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import React, { useState } from 'react';
+import { 
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Alert, KeyboardAvoidingView, ScrollView 
+} from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { db } from '../config/Firebase';
 
 export default function NovoAgendamento({ navigation }) {
-  const [nome, setNome] = useState("");
-  const [serv, setServ] = useState("");
-  const [observacoes, setObservacoes] = useState("");
+  const [nome, setNome] = useState('');
+  const [servico, setServico] = useState('');
+  const [observacoes, setObservacoes] = useState('');
+  const [data, setData] = useState(new Date());
+  const [hora, setHora] = useState(new Date());
 
-  const [data, setData] = useState("");
-  const [hora, setHora] = useState("");
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
-  const [showDate, setShowDate] = useState(false);
-  const [showTime, setShowTime] = useState(false);
-
-  // 📌 Abrir date picker
-  const abrirCalendario = () => setShowDate(true);
-  const abrirRelogio = () => setShowTime(true);
-
-  // 📌 Quando escolher data
-  const onChangeData = (event, selectedDate) => {
-    setShowDate(false);
-    if (selectedDate) {
-      const d = selectedDate.toISOString().split("T")[0];
-      setData(d);
-    }
-  };
-
-  // 📌 Quando escolher hora
-  const onChangeHora = (event, selectedTime) => {
-    setShowTime(false);
-    if (selectedTime) {
-      const h = selectedTime.toLocaleTimeString("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      setHora(h);
-    }
-  };
-
-  // 📌 SALVAR AGENDAMENTO
   const salvarAgendamento = async () => {
-    if (!nome || !data || !hora || !serv) {
-      Alert.alert("Erro", "Preencha todos os campos obrigatórios");
+    if (!nome || !servico) {
+      Alert.alert('Atenção', 'Nome e serviço são obrigatórios!');
       return;
     }
 
     try {
       await addDoc(collection(db, "agendamentos"), {
         nome,
-        data,
-        hora,
-        serv,
+        serv: servico,
         observacoes,
+        data: Timestamp.fromDate(data),
+        hora: hora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        criadoEm: Timestamp.now()
       });
-
-      await AsyncStorage.multiRemove([
-        "agendamentos_cache",
-        "agendamentos_cache_timestamp"
-      ]);
-
-      Alert.alert("Sucesso", "Agendamento concluído!");
+      Alert.alert('Sucesso', 'Agendamento salvo!');
       navigation.goBack();
-
-    } catch (err) {
-      Alert.alert("Erro", "Não foi possível salvar o agendamento");
+    } catch (error) {
+      Alert.alert('Erro', 'Falha ao salvar agendamento: ' + error.message);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Novo Agendamento</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.label}>Nome do Cliente</Text>
+        <TextInput
+          style={[styles.input, styles.inputNome]}
+          value={nome}
+          onChangeText={setNome}
+          placeholder="Digite o nome"
+        />
 
-      <TextInput
-        placeholder="Nome"
-        style={styles.input}
-        value={nome}
-        onChangeText={setNome}
-      />
+        <Text style={styles.label}>Serviço</Text>
+        <TextInput
+          style={styles.input}
+          value={servico}
+          onChangeText={setServico}
+          placeholder="Digite o serviço"
+        />
 
-      <TouchableOpacity style={styles.btnPicker} onPress={abrirCalendario}>
-        <Text style={styles.btnPickerText}>
-          {data ? `Data: ${data}` : "Selecionar Data"}
-        </Text>
-      </TouchableOpacity>
+        <Text style={styles.label}>Observações</Text>
+        <TextInput
+          style={[styles.input, { height: 80 }]}
+          value={observacoes}
+          onChangeText={setObservacoes}
+          placeholder="Observações adicionais"
+          multiline
+        />
 
-      {showDate && (
-        <DateTimePicker mode="date" value={new Date()} onChange={onChangeData} />
-      )}
+        <Text style={styles.label}>Data</Text>
+        <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.pickerButton}>
+          <Text style={styles.pickerText}>{data.toLocaleDateString()}</Text>
+        </TouchableOpacity>
+        {showDatePicker && (
+          <DateTimePicker
+            value={data}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={(event, selectedDate) => {
+              if (Platform.OS === 'android') setShowDatePicker(false);
+              if (selectedDate) setData(selectedDate);
+            }}
+          />
+        )}
 
-      <TouchableOpacity style={styles.btnPicker} onPress={abrirRelogio}>
-        <Text style={styles.btnPickerText}>
-          {hora ? `Hora: ${hora}` : "Selecionar Hora"}
-        </Text>
-      </TouchableOpacity>
+        <Text style={styles.label}>Hora</Text>
+        <TouchableOpacity onPress={() => setShowTimePicker(true)} style={[styles.pickerButton, styles.horaButton]}>
+          <Text style={styles.horaText}>{hora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+        </TouchableOpacity>
+        {showTimePicker && (
+          <DateTimePicker
+            value={hora}
+            mode="time"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            is24Hour={true}
+            onChange={(event, selectedTime) => {
+              if (Platform.OS === 'android') setShowTimePicker(false);
+              if (selectedTime) setHora(selectedTime);
+            }}
+          />
+        )}
 
-      {showTime && (
-        <DateTimePicker mode="time" value={new Date()} onChange={onChangeHora} />
-      )}
+        {/* Botão de confirmação (só para iOS) */}
+        {Platform.OS === 'ios' && showTimePicker && (
+          <TouchableOpacity 
+            style={[styles.saveBtn, { backgroundColor: '#ffb3da', marginTop: 10 }]} 
+            onPress={() => setShowTimePicker(false)}
+          >
+            <Text style={[styles.saveBtnText, { color: '#d63384' }]}>Confirmar Hora</Text>
+          </TouchableOpacity>
+        )}
 
-      <TextInput
-        placeholder="Serviço"
-        style={styles.input}
-        value={serv}
-        onChangeText={setServ}
-      />
-
-      <TextInput
-        placeholder="Observações"
-        style={[styles.input, { height: 80 }]}
-        value={observacoes}
-        onChangeText={setObservacoes}
-        multiline
-      />
-
-      <TouchableOpacity style={styles.btnSalvar} onPress={salvarAgendamento}>
-        <Text style={styles.btnSalvarText}>Salvar</Text>
-      </TouchableOpacity>
-    </View>
+        <TouchableOpacity style={styles.saveBtn} onPress={salvarAgendamento}>
+          <Text style={styles.saveBtnText}>💾 Salvar Agendamento</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
-  title: { fontSize: 28, marginBottom: 20, fontWeight: "bold" },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 12,
-  },
-  btnPicker: {
-    backgroundColor: "#ffb6c1",
-    padding: 12,
-    borderRadius: 10,
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  btnPickerText: { color: "#fff", fontWeight: "bold" },
-  btnSalvar: {
-    backgroundColor: "#ff69b4",
-    padding: 16,
-    borderRadius: 10,
-    marginTop: 10,
-  },
-  btnSalvarText: {
-    textAlign: "center",
-    color: "white",
-    fontSize: 20,
-    fontWeight: "bold",
-  },
+  container: { padding: 20, paddingBottom: 40 },
+  label: { fontSize: 16, fontWeight: '600', marginBottom: 6, color: '#d63384' },
+  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 12, marginBottom: 16, fontSize: 16 },
+  inputNome: { fontSize: 20, fontWeight: 'bold', color: '#222' },
+  pickerButton: { borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 12, marginBottom: 16 },
+  pickerText: { fontSize: 16, color: '#333' },
+  horaButton: { backgroundColor: '#ffe6f7', borderColor: '#ffb3da' },
+  horaText: { fontSize: 20, fontWeight: 'bold', color: '#d63384', textAlign: 'center' },
+  saveBtn: { backgroundColor: '#d63384', padding: 16, borderRadius: 16, alignItems: 'center', marginTop: 20 },
+  saveBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
 });
