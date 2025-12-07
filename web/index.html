@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no" />
+    
+    <!-- Favicon e ícones PWA -->
+    <link rel="icon" type="image/png" href="/image/logo.png" />
+    <link rel="apple-touch-icon" href="/image/logo.png" />
+    <link rel="shortcut icon" href="/image/logo.png" />
+    
+    <title>App Manicure</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#EB69A3" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="App Manicure" />
+    
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html, body, #root {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        overflow-x: hidden;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      #root {
+        display: flex;
+        flex-direction: column;
+      }
+      /* Estilos para inputs de data e hora */
+      .date-input, .time-input {
+        width: 100%;
+        padding: 14px;
+        border: none;
+        background: transparent;
+        font-size: 16px;
+        font-family: inherit;
+        outline: none;
+      }
+      .date-input::-webkit-calendar-picker-indicator,
+      .time-input::-webkit-calendar-picker-indicator {
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>Você precisa habilitar o JavaScript para executar este app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

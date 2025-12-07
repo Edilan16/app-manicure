@@ -20,31 +20,25 @@ export default function FinanceiroScreen({ navigation }) {
   const [receita, setReceita] = useState('');
   const [despesa, setDespesa] = useState('');
   const [metodoPagamento, setMetodoPagamento] = useState('');
-  
-  // ID único para o Input Accessory View (só iOS)
+
+  // NOVOS CAMPOS
+  const [descricaoReceita, setDescricaoReceita] = useState('');
+  const [descricaoDespesa, setDescricaoDespesa] = useState('');
+
   const inputAccessoryViewID = 'numeric_keyboard_done_toolbar';
 
-  // Função para formatar como moeda enquanto digita
   const formatarParaMoeda = (text) => {
-    // Remove tudo exceto números
     const apenasNumeros = text.replace(/\D/g, '');
-    
     if (apenasNumeros === '') return '';
-    
-    // Converte para número e divide por 100 para ter centavos
     const valorEmCentavos = parseInt(apenasNumeros, 10);
     const valorEmReais = valorEmCentavos / 100;
-    
-    // Formata como R$ brasileiro
     return valorEmReais.toLocaleString('pt-BR', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     });
   };
 
-  // Função para salvar valor numérico
   const handleReceitaChange = (text) => {
-    // Remove formatação para guardar o valor puro
     const apenasNumeros = text.replace(/\D/g, '');
     setReceita(apenasNumeros);
   };
@@ -54,7 +48,6 @@ export default function FinanceiroScreen({ navigation }) {
     setDespesa(apenasNumeros);
   };
 
-  // Renderiza a barra com botão "CONCLUÍDO" acima do teclado (iOS)
   const renderInputAccessory = () => (
     <InputAccessoryView backgroundColor="#f8f8f8" nativeID={inputAccessoryViewID}>
       <View style={styles.accessoryContainer}>
@@ -69,43 +62,47 @@ export default function FinanceiroScreen({ navigation }) {
     </InputAccessoryView>
   );
 
-  // Salvar dados
-const handleSalvar = async () => {
-  Keyboard.dismiss();
+  // SALVAR DADOS
+  const handleSalvar = async () => {
+    Keyboard.dismiss();
 
-  if (!metodoPagamento) {
-    Alert.alert("Erro", "Escolha o método de pagamento");
-    return;
-  }
+    if (!metodoPagamento) {
+      Alert.alert("Erro", "Escolha o método de pagamento");
+      return;
+    }
 
-  // Converter centavos → reais
-  const receitaValor = receita ? parseFloat(receita) / 100 : 0;
-  const despesaValor = despesa ? parseFloat(despesa) / 100 : 0;
+    const receitaValor = receita ? parseFloat(receita) / 100 : 0;
+    const despesaValor = despesa ? parseFloat(despesa) / 100 : 0;
 
-  try {
-    await addDoc(collection(db, "financeiro"), {
-      receita: receitaValor,
-      despesa: despesaValor,
-      metodoPagamento,
-      data: new Date()
-    });
+    if (receitaValor === 0 && despesaValor === 0) {
+      Alert.alert("Erro", "Digite um valor de receita ou despesa");
+      return;
+    }
 
-    Alert.alert("Sucesso!", "Registro salvo com sucesso!");
+    try {
+      await addDoc(collection(db, "financeiro"), {
+        receita: receitaValor,
+        despesa: despesaValor,
+        metodoPagamento,
+        descricaoReceita,
+        descricaoDespesa,
+        data: new Date()
+      });
 
-    // 🔥 VOLTA AUTOMÁTICO PARA O DASHBOARD
-    navigation.navigate("Dashboard");
+      navigation.navigate("Dashboard");
 
-    // Limpa os campos
-    setReceita("");
-    setDespesa("");
-    setMetodoPagamento("");
+      // LIMPAR CAMPOS
+      setReceita("");
+      setDespesa("");
+      setMetodoPagamento("");
+      setDescricaoDespesa("");
+      setDescricaoReceita("");
 
-  } catch (error) {
-    Alert.alert("Erro", "Não foi possível salvar o registro");
-    console.log(error);
-  }
+    } catch (error) {
+      Alert.alert("Erro", "Não foi possível salvar o registro");
+      console.log(error);
+    }
   };
-
 
   return (
     <KeyboardAvoidingView
@@ -116,24 +113,33 @@ const handleSalvar = async () => {
       <ScrollView 
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
       >
-                <TouchableOpacity 
+
+        {/* BOTÃO VOLTAR */}
+        <TouchableOpacity 
           onPress={() => navigation.goBack()}
           style={styles.btnVoltar}
         >
-        <Text style={styles.btnVoltarText}>← Voltar</Text>
+          <Text style={styles.btnVoltarText}>← Voltar</Text>
         </TouchableOpacity>
 
-        {/* Cabeçalho */}
         <View style={styles.header}>
           <Text style={styles.title}>💰 Financeiro</Text>
           <Text style={styles.subtitle}>Controle suas finanças</Text>
         </View>
 
-        {/* Seção RECEITA */}
+        {/* RECEITA */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>📈 RECEITA</Text>
+
+          <TextInput
+            style={styles.inputDescricao}
+            placeholder="Descrição da receita (opcional)"
+            placeholderTextColor="#888"
+            value={descricaoReceita}
+            onChangeText={setDescricaoReceita}
+          />
+
           <View style={styles.inputCard}>
             <View style={styles.currencyContainer}>
               <Text style={styles.currencySymbol}>R$</Text>
@@ -146,15 +152,22 @@ const handleSalvar = async () => {
               placeholderTextColor="#999"
               keyboardType="number-pad"
               inputAccessoryViewID={inputAccessoryViewID}
-              returnKeyType="done"
-              onSubmitEditing={() => Keyboard.dismiss()}
             />
           </View>
         </View>
 
-        {/* Seção DESPESA */}
+        {/* DESPESA */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>📉 DESPESA</Text>
+
+          <TextInput
+            style={styles.inputDescricao}
+            placeholder="Descrição da despesa (ex: gasolina, material...)"
+            placeholderTextColor="#888"
+            value={descricaoDespesa}
+            onChangeText={setDescricaoDespesa}
+          />
+
           <View style={styles.inputCard}>
             <View style={styles.currencyContainer}>
               <Text style={styles.currencySymbol}>R$</Text>
@@ -167,306 +180,172 @@ const handleSalvar = async () => {
               placeholderTextColor="#999"
               keyboardType="number-pad"
               inputAccessoryViewID={inputAccessoryViewID}
-              returnKeyType="done"
-              onSubmitEditing={() => Keyboard.dismiss()}
             />
           </View>
         </View>
 
-        {/* Métodos de Pagamento */}
+        {/* MÉTODO */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>💳 MÉTODO DE PAGAMENTO</Text>
-          
+
           <View style={styles.paymentOptions}>
-            <TouchableOpacity
-              style={[
-                styles.paymentButton,
-                metodoPagamento === 'pix' && styles.paymentButtonSelected
-              ]}
-              onPress={() => setMetodoPagamento('pix')}
-            >
-              <Text style={[
-                styles.paymentButtonText,
-                metodoPagamento === 'pix' && styles.paymentButtonTextSelected
-              ]}>
-                PIX
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.paymentButton,
-                metodoPagamento === 'dinheiro' && styles.paymentButtonSelected
-              ]}
-              onPress={() => setMetodoPagamento('dinheiro')}
-            >
-              <Text style={[
-                styles.paymentButtonText,
-                metodoPagamento === 'dinheiro' && styles.paymentButtonTextSelected
-              ]}>
-                DINHEIRO
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.paymentButton,
-                metodoPagamento === 'cartao' && styles.paymentButtonSelected
-              ]}
-              onPress={() => setMetodoPagamento('cartao')}
-            >
-              <Text style={[
-                styles.paymentButtonText,
-                metodoPagamento === 'cartao' && styles.paymentButtonTextSelected
-              ]}>
-                CARTÃO
-              </Text>
-            </TouchableOpacity>
+            {["pix", "dinheiro", "cartao"].map((m) => (
+              <TouchableOpacity
+                key={m}
+                style={[
+                  styles.paymentButton,
+                  metodoPagamento === m && styles.paymentButtonSelected
+                ]}
+                onPress={() => setMetodoPagamento(m)}
+              >
+                <Text
+                  style={[
+                    styles.paymentButtonText,
+                    metodoPagamento === m && styles.paymentButtonTextSelected
+                  ]}
+                >
+                  {m.toUpperCase()}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
-        {/* Botão Salvar */}
+        {/* SALVAR */}
         <TouchableOpacity 
           style={styles.saveButton}
           onPress={handleSalvar}
-          activeOpacity={0.8}
         >
           <Text style={styles.saveButtonText}>💾 SALVAR REGISTRO</Text>
         </TouchableOpacity>
 
-        {/* Resumo */}
-        {(receita || despesa) && (
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>📊 RESUMO</Text>
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Receita:</Text>
-              <Text style={styles.summaryValuePositive}>
-                R$ {formatarParaMoeda(receita) || '0,00'}
-              </Text>
-            </View>
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Despesa:</Text>
-              <Text style={styles.summaryValueNegative}>
-                R$ {formatarParaMoeda(despesa) || '0,00'}
-              </Text>
-            </View>
-            
-            <View style={styles.separator} />
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Saldo:</Text>
-              <Text style={styles.summaryValueTotal}>
-                R$ {formatarParaMoeda(String(parseInt(receita || 0) - parseInt(despesa || 0)))}
-              </Text>
-            </View>
-          </View>
-        )}
       </ScrollView>
 
-      {/* Barra do botão "CONCLUÍDO" (APENAS iOS) */}
       {Platform.OS === 'ios' && renderInputAccessory()}
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
+  container: { flex: 1, backgroundColor: "#f2f2f2" },
+  scrollContent: { padding: 20, paddingBottom: 40 },
+
+  btnVoltar: {
+    marginBottom: 15
   },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
+  btnVoltarText: {
+    fontSize: 18,
+    fontWeight: "600"
   },
+
   header: {
-    marginBottom: 30,
-    alignItems: 'center',
+    marginBottom: 20
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 5,
+    fontSize: 28,
+    fontWeight: "bold"
   },
   subtitle: {
-    fontSize: 16,
-    color: '#7f8c8d',
+    color: "#666"
   },
+
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#2c3e50',
-    marginBottom: 15,
-  },
-  inputCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ddd',
+    backgroundColor: "#fff",
+    padding: 15,
     borderRadius: 12,
-    backgroundColor: '#fafafa',
-    overflow: 'hidden',
+    marginBottom: 20,
+    elevation: 2
   },
+
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 10
+  },
+
+  inputDescricao: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 15,
+    backgroundColor: "#fafafa",
+    fontSize: 16,
+    color: "#333"
+  },
+
+  inputCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 10,
+    backgroundColor: "#fff"
+  },
+
   currencyContainer: {
-    backgroundColor: '#3498db',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
+    paddingHorizontal: 12
   },
   currencySymbol: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: 18,
+    fontWeight: "bold"
   },
+
   input: {
     flex: 1,
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    paddingHorizontal: 15,
-    paddingVertical: 15,
-    minHeight: 65,
+    padding: 12,
+    fontSize: 18
   },
+
   paymentOptions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
+    flexDirection: "row",
+    justifyContent: "space-between"
   },
+
   paymentButton: {
     flex: 1,
+    padding: 12,
     marginHorizontal: 5,
-    paddingVertical: 15,
-    backgroundColor: '#f8f9fa',
     borderRadius: 10,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#e9ecef',
+    backgroundColor: "#eee"
   },
   paymentButtonSelected: {
-    backgroundColor: '#3498db',
-    borderColor: '#2980b9',
+    backgroundColor: "#4CAF50"
   },
   paymentButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#6c757d',
+    textAlign: "center",
+    fontWeight: "bold"
   },
   paymentButtonTextSelected: {
-    color: '#fff',
-    fontWeight: '700',
+    color: "#fff"
   },
+
   saveButton: {
-    backgroundColor: '#27ae60',
-    paddingVertical: 18,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 30,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 4,
+    backgroundColor: "#0066FF",
+    padding: 15,
+    borderRadius: 10,
+    marginTop: 10
   },
   saveButtonText: {
+    textAlign: "center",
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
+    color: "#fff",
+    fontWeight: "bold"
   },
-  summaryCard: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 20,
-    marginTop: 10,
-    borderWidth: 2,
-    borderColor: '#f1f2f6',
-  },
-  summaryTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#2c3e50',
-    marginBottom: 15,
-    textAlign: 'center',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  summaryLabel: {
-    fontSize: 16,
-    color: '#7f8c8d',
-  },
-  summaryValuePositive: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#27ae60',
-  },
-  summaryValueNegative: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#e74c3c',
-  },
-  summaryValueTotal: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#3498db',
-  },
-  separator: {
-    height: 1,
-    backgroundColor: '#ecf0f1',
-    marginVertical: 15,
-  },
-  // Estilos para o Input Accessory View (iOS)
+
   accessoryContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#ccc',
-    backgroundColor: '#fff',
-    height: 50,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    padding: 10
   },
   doneButton: {
-    paddingHorizontal: 25,
-    paddingVertical: 10,
-    backgroundColor: '#3498db',
-    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: "#007bff",
+    borderRadius: 8
   },
   doneButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  btnVoltar: {
-  backgroundColor: "#eee",
-  paddingVertical: 10,
-  paddingHorizontal: 18,
-  borderRadius: 10,
-  alignSelf: "flex-start",
-  marginBottom: 10,
-  borderWidth: 1,
-  borderColor: "#ccc"
-},
-btnVoltarText: {
-  fontSize: 16,
-  fontWeight: "600",
-  color: "#333"
-}
-
+    color: "#fff",
+    fontSize: 16
+  }
 });

@@ -1,157 +1,420 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  SectionList, 
-  TouchableOpacity, 
-  Alert,
+import React, { useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  SectionList,
+  Platform,
   ActivityIndicator,
-  RefreshControl
-} from 'react-native';
-import { db } from '../config/Firebase';
-import { collection, query, orderBy, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
-import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
+  Animated,
+} from "react-native";
+import { db } from "../config/Firebase";
+import {
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
+import { useNavigation } from "@react-navigation/native";
+import { Swipeable } from "react-native-gesture-handler";
 
-// Função para formatar data
-function formatarData(data) {
-  if (data?.toDate) return data.toDate().toLocaleDateString("pt-BR");
-  return data;
+// 🔥 Função de formatação segura de data
+function formatarData(valor) {
+  if (!valor) return "0000-00-00";
+
+  // Firestore Timestamp
+  if (valor?.seconds) {
+    const date = new Date(valor.seconds * 1000);
+    return date.toISOString().slice(0, 10);
+  }
+
+  // Já é string
+  return valor;
 }
 
-// Card de agendamento
-const AppointmentCard = React.memo(({ item, onDelete }) => {
-  const agora = new Date();
-  const horaParts = item.hora.split(':');
-  const itemHora = new Date(item.data?.toDate ? item.data.toDate() : item.data);
-  itemHora.setHours(Number(horaParts[0]), Number(horaParts[1]));
+export default function AgendaScreen() {
+  const navigation = useNavigation();
+  const [sections, setSections] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const isPassado = itemHora < agora;
+  useEffect(() => {
+    const q = query(collection(db, "agendamentos"), orderBy("data"));
+
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        if (!snapshot.docs.length) {
+          setSections([]);
+          setLoading(false);
+          return;
+        }
+
+        let lista = snapshot.docs.map((docSnap) => {
+          const d = docSnap.data();
+          const dataFormatada = formatarData(d.data);
+
+          return {
+            id: docSnap.id,
+            nome: d.nome || "Sem nome",
+            data: dataFormatada,
+            hora: d.hora || "--:--",
+            serv: d.serv || "Sem serviço",
+            observacoes: d.observacoes || "",
+          };
+        });
+
+        // Ordenação correta
+        lista.sort((a, b) => {
+          const dataA = new Date(`${a.data} ${a.hora}`);
+          const dataB = new Date(`${b.data} ${b.hora}`);
+          return dataA - dataB;
+        });
+
+        // Agrupar por data
+        const agrupado = lista.reduce((acc, item) => {
+          if (!acc[item.data]) acc[item.data] = [];
+          acc[item.data].push(item);
+          return acc;
+        }, {});
+
+        const formatado = Object.keys(agrupado).map((data) => ({
+          title: data,
+          data: agrupado[data],
+        }));
+
+        setSections(formatado);
+        setLoading(false);
+      },
+      (err) => {
+        console.log("Erro ao carregar:", err);
+        setLoading(false);
+      }
+    );
+
+    return () => unsub();
+  }, []);
+
+  // Função de exclusão (compatível com PWA/Web)
+  const deletar = async (id) => {
+    console.log("=== DELETAR CHAMADO ===");
+    console.log("ID recebido:", id);
+    
+    // Usar window.confirm para PWA/Web (funciona no iPhone)
+    const confirmar = window.confirm("Deseja realmente excluir este agendamento?");
+    
+    if (!confirmar) {
+      console.log("Cancelou exclusão");
+      return;
+    }
+
+    console.log("Usuário confirmou exclusão");
+    try {
+      console.log("Criando referência do documento...");
+      const ref = doc(db, "agendamentos", id);
+      console.log("Referência criada:", ref.path);
+      
+      console.log("Iniciando exclusão...");
+      await deleteDoc(ref);
+      console.log("✅ Agendamento excluído com sucesso!");
+      window.alert("Agendamento excluído com sucesso!");
+    } catch (error) {
+      console.error("❌ Erro ao excluir:", error);
+      console.error("Código do erro:", error.code);
+      console.error("Mensagem:", error.message);
+      window.alert(`Erro ao excluir: ${error.message}`);
+    }
+  };
+
+  const novoAgendamento = () => {
+    navigation.navigate("NovoAgendamento");
+  };
+
+  // Renderiza o botão de excluir que aparece ao deslizar
+  const renderRightActions = (item) => {
+    return (
+      <TouchableOpacity
+        style={styles.deleteAction}
+        onPress={() => {
+          console.log("Clicou no botão de deletar:", item.id);
+          deletar(item.id);
+        }}
+      >
+        <Text style={styles.deleteActionText}>🗑️ Excluir</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color="#EB69A3" />
+      </View>
+    );
+  }
 
   return (
-    <Swipeable renderRightActions={() => (
-      <TouchableOpacity style={styles.deleteBtnSwipe} onPress={() => onDelete(item.id)}>
-        <Text style={styles.deleteBtnText}>🗑️</Text>
-      </TouchableOpacity>
-    )}>
-      <View style={[styles.card, isPassado && styles.cardPast]}>
-        <Text style={[styles.cardHighlight, isPassado && styles.cardHighlightPast]}>
-          👤 {item.nome} — ⏰ {item.hora}
-        </Text>
-        <Text style={styles.cardDetails}>💅 {item.serv}</Text>
-        {item.observacoes && <Text style={styles.cardNotes}>📝 {item.observacoes}</Text>}
+    <View style={styles.container}>
+      {/* Header moderno */}
+      <View style={styles.headerContainer}>
+        <TouchableOpacity 
+          style={styles.backBtn} 
+          onPress={() => navigation.navigate("Dashboard")}
+        >
+          <Text style={styles.backText}>← Voltar</Text>
+        </TouchableOpacity>
+        <Text style={styles.pageTitle}>📅 Agenda</Text>
       </View>
-    </Swipeable>
-  );
-});
 
-export default function AgendaScreen({ navigation }) {
-  const [agendamentos, setAgendamentos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <Swipeable
+            renderRightActions={() => renderRightActions(item)}
+            overshootRight={false}
+          >
+            <View style={styles.item}>
+              <View style={styles.timeIndicator}>
+                <Text style={styles.timeText}>{item.hora}</Text>
+              </View>
+              <View style={styles.itemContent}>
+                <Text style={styles.nome}>👤 {item.nome}</Text>
+                <Text style={styles.det}>💅 {item.serv}</Text>
+                {item.observacoes ? (
+                  <Text style={styles.obs}>📝 {item.observacoes}</Text>
+                ) : null}
+              </View>
+            </View>
+          </Swipeable>
+        )}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.headerSection}>
+            <Text style={styles.headerDate}>📆 {formatarDataBonita(section.title)}</Text>
+          </View>
+        )}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>📭</Text>
+            <Text style={styles.empty}>Nenhum agendamento</Text>
+            <Text style={styles.emptySubtext}>Toque em "+ Novo" para criar</Text>
+          </View>
+        }
+        contentContainerStyle={{ paddingBottom: 100 }}
+      />
 
-  const carregarAgenda = useCallback(() => {
-    setLoading(true);
-    try {
-      const q = query(collection(db, "agendamentos"), orderBy("data", "desc"));
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const list = [];
-        querySnapshot.forEach(docSnap => {
-          list.push({ id: docSnap.id, ...docSnap.data() });
-        });
-        setAgendamentos(list);
-        setLoading(false);
-        setRefreshing(false);
-      }, error => {
-        console.error(error.message);
-        Alert.alert("Erro", `Falha ao carregar agendamentos: ${error.message}`);
-        setLoading(false);
-        setRefreshing(false);
-      });
-      return unsubscribe;
-    } catch (error) {
-      console.error(error.message);
-      setLoading(false);
-      setRefreshing(false);
-      return null;
-    }
-  }, []);
-
-  const deletarAgendamento = useCallback((id) => {
-    Alert.alert(
-      "Confirmar Exclusão",
-      "Deseja realmente deletar este agendamento?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Deletar", style: "destructive", onPress: async () => {
-          try { await deleteDoc(doc(db, "agendamentos", id)); } 
-          catch { Alert.alert("Erro", "Falha ao deletar agendamento"); }
-        } }
-      ]
-    );
-  }, []);
-
-  const onRefresh = useCallback(() => { setRefreshing(true); carregarAgenda(); }, [carregarAgenda]);
-
-  useEffect(() => { const unsubscribe = carregarAgenda(); return () => unsubscribe && unsubscribe(); }, [carregarAgenda]);
-
-  // Agrupar por data
-  const sections = agendamentos.reduce((acc, ag) => {
-    const dataKey = formatarData(ag.data);
-    const section = acc.find(s => s.title === dataKey);
-    if (section) section.data.push(ag);
-    else acc.push({ title: dataKey, data: [ag] });
-    return acc;
-  }, []).sort((a, b) => new Date(a.title.split('/').reverse().join('-')) - new Date(b.title.split('/').reverse().join('-')));
-
-  const renderEmpty = () => (
-    <View style={styles.emptyContainer}>
-      {loading ? <ActivityIndicator size="large" color="#d63384" /> : (
-        <>
-          <Text style={styles.emptyTitle}>📅 Agenda Vazia</Text>
-          <Text style={styles.emptySubtext}>Toque no botão abaixo para criar um novo agendamento!</Text>
-        </>
-      )}
+      <TouchableOpacity style={styles.addBtn} onPress={novoAgendamento}>
+        <Text style={styles.addText}>+ Novo Agendamento</Text>
+      </TouchableOpacity>
     </View>
   );
-
-  return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={styles.container}>
-        <SectionList
-          sections={sections}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <AppointmentCard item={item} onDelete={deletarAgendamento} />}
-          renderSectionHeader={({ section: { title } }) => (
-            <Text style={styles.sectionHeader}>{title}</Text>
-          )}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#d63384']} tintColor="#d63384" />}
-          ListEmptyComponent={renderEmpty}
-          contentContainerStyle={{ paddingBottom: 80, paddingHorizontal: 16 }}
-        />
-
-        <TouchableOpacity style={styles.newBtn} onPress={() => navigation.navigate("NovoAgendamento")}>
-          <Text style={styles.newBtnText}>+ Novo Agendamento</Text>
-        </TouchableOpacity>
-      </View>
-    </GestureHandlerRootView>
-  );
 }
 
+// Formatar data de forma bonita
+function formatarDataBonita(data) {
+  if (!data || data === "0000-00-00") return "Data inválida";
+  
+  const [ano, mes, dia] = data.split("-");
+  const dataObj = new Date(ano, mes - 1, dia);
+  
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  
+  const amanha = new Date(hoje);
+  amanha.setDate(hoje.getDate() + 1);
+  
+  dataObj.setHours(0, 0, 0, 0);
+  
+  if (dataObj.getTime() === hoje.getTime()) {
+    return "Hoje";
+  } else if (dataObj.getTime() === amanha.getTime()) {
+    return "Amanhã";
+  }
+  
+  const diasSemana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sext", "Sáb"];
+  const meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  
+  return `${diasSemana[dataObj.getDay()]}, ${dia} de ${meses[parseInt(mes) - 1]}`;
+}
+
+// 🎨 ESTILOS
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  sectionHeader: { fontSize: 18, fontWeight: '700', color: '#d63384', marginTop: 20, marginBottom: 8 },
-  card: { backgroundColor: '#ffe6f7', padding: 16, borderRadius: 16, marginBottom: 12, borderColor: '#ffb3da', borderWidth: 1 },
-  cardPast: { backgroundColor: '#f0f0f0' },
-  cardHighlight: { fontSize: 18, fontWeight: '700', color: '#d63384', marginBottom: 4 },
-  cardHighlightPast: { color: '#999' },
-  cardDetails: { fontSize: 14, color: '#333', marginBottom: 2 },
-  cardNotes: { fontSize: 13, color: '#777', fontStyle: 'italic', marginTop: 2 },
-  deleteBtnSwipe: { backgroundColor: '#ff4d4d', width: 60, justifyContent: 'center', alignItems: 'center', borderRadius: 16, marginVertical: 8 },
-  deleteBtnText: { color: 'white', fontWeight: 'bold', fontSize: 18 },
-  newBtn: { backgroundColor: '#d63384', margin: 16, padding: 16, borderRadius: 16, alignItems: 'center', position: 'absolute', bottom: 0, left: 16, right: 16, elevation: 5 },
-  newBtnText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 60 },
-  emptyTitle: { fontSize: 24, fontWeight: 'bold', color: '#d63384', marginBottom: 12 },
-  emptySubtext: { fontSize: 14, color: '#999', textAlign: 'center', fontStyle: 'italic' }
+  container: {
+    flex: 1,
+    backgroundColor: "#f5f5f5",
+  },
+  loading: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f5f5f5",
+  },
+
+  headerContainer: {
+    backgroundColor: "#EB69A3",
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 8,
+  },
+
+  pageTitle: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#fff",
+    textAlign: "center",
+    marginTop: 10,
+  },
+
+  backBtn: {
+    alignSelf: "flex-start",
+  },
+  backText: {
+    fontSize: 16,
+    color: "#fff",
+    fontWeight: "600",
+  },
+
+  headerSection: {
+    backgroundColor: "#fff",
+    marginTop: 20,
+    marginHorizontal: 15,
+    marginBottom: 10,
+    padding: 12,
+    borderRadius: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: "#EB69A3",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+
+  headerDate: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+  },
+
+  item: {
+    backgroundColor: "#fff",
+    marginHorizontal: 15,
+    marginBottom: 10,
+    borderRadius: 15,
+    flexDirection: "row",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+
+  timeIndicator: {
+    backgroundColor: "#EB69A3",
+    width: 70,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 15,
+  },
+
+  timeText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+
+  itemContent: {
+    flex: 1,
+    padding: 15,
+    justifyContent: "center",
+  },
+
+  nome: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 5,
+  },
+  det: {
+    fontSize: 15,
+    color: "#666",
+    marginBottom: 3,
+  },
+  obs: {
+    fontSize: 13,
+    color: "#999",
+    marginTop: 5,
+    fontStyle: "italic",
+  },
+
+  deleteAction: {
+    backgroundColor: "#FF4444",
+    justifyContent: "center",
+    alignItems: "center",
+    width: 100,
+    borderRadius: 15,
+    marginRight: 15,
+    marginBottom: 10,
+  },
+  deleteActionText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
+
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+  },
+
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 10,
+  },
+
+  empty: {
+    textAlign: "center",
+    color: "#666",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+
+  emptySubtext: {
+    textAlign: "center",
+    color: "#999",
+    fontSize: 14,
+    marginTop: 5,
+  },
+
+  addBtn: {
+    position: "absolute",
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: "#4caf50",
+    padding: 18,
+    borderRadius: 15,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 8,
+  },
+  addText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
 });
