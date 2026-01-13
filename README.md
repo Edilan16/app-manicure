@@ -100,7 +100,7 @@ Antes de começar, certifique-se de ter instalado:
 
 - **Node.js** (versão 16 ou superior) - [Download](https://nodejs.org/)
 - **npm** ou **yarn** - Gerenciador de pacotes
-- **Expo CLI** - Instale com `npm install -g expo-cli`
+- **Expo CLI** - Instale com `npm install -g @expo/cli`
 - **Conta Firebase** - Crie em [Firebase Console](https://console.firebase.google.com/)
 - **Expo Go** (opcional) - App para testar em dispositivos físicos
   - [Android](https://play.google.com/store/apps/details?id=host.exp.exponent)
@@ -177,6 +177,8 @@ const firebaseConfig = {
 ```
 
 ⚠️ **Importante:** Nunca compartilhe suas credenciais do Firebase publicamente!
+
+💡 **Dica de Segurança:** Para projetos em produção, considere usar variáveis de ambiente ou um arquivo de configuração separado (como `.env`) que seja excluído do controle de versão via `.gitignore`.
 
 ## ▶️ Como Executar
 
