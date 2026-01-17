@@ -8,6 +8,7 @@ import {
   Platform,
   ActivityIndicator,
   Animated,
+  Alert,
 } from "react-native";
 import { db } from "../config/Firebase";
 import {
@@ -20,6 +21,7 @@ import {
 } from "firebase/firestore";
 import { useNavigation } from "@react-navigation/native";
 import { Swipeable } from "react-native-gesture-handler";
+import { enviarWhatsApp, criarMensagemLembrete, formatarTelefoneExibicao } from '../utils/whatsappHelper';
 
 // 🔥 Função de formatação segura de data
 function formatarData(valor) {
@@ -59,6 +61,7 @@ export default function AgendaScreen() {
           return {
             id: docSnap.id,
             nome: d.nome || "Sem nome",
+            telefone: d.telefone || "",
             data: dataFormatada,
             hora: d.hora || "--:--",
             serv: d.serv || "Sem serviço",
@@ -132,6 +135,30 @@ export default function AgendaScreen() {
     navigation.navigate("NovoAgendamento");
   };
 
+  // Enviar lembrete por WhatsApp
+  const enviarLembrete = async (item) => {
+    if (!item.telefone) {
+      if (Platform.OS === 'web') {
+        window.alert('Este agendamento não tem telefone cadastrado.');
+      } else {
+        Alert.alert('Aviso', 'Este agendamento não tem telefone cadastrado.');
+      }
+      return;
+    }
+
+    try {
+      const mensagem = criarMensagemLembrete(item);
+      await enviarWhatsApp(item.telefone, mensagem);
+    } catch (error) {
+      console.error('Erro ao enviar WhatsApp:', error);
+      if (Platform.OS === 'web') {
+        window.alert('Erro ao abrir WhatsApp. Verifique se o número está correto.');
+      } else {
+        Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
+      }
+    }
+  };
+
   // Renderiza o botão de excluir que aparece ao deslizar
   const renderRightActions = (item) => {
     return (
@@ -182,10 +209,22 @@ export default function AgendaScreen() {
               </View>
               <View style={styles.itemContent}>
                 <Text style={styles.nome}>👤 {item.nome}</Text>
+                {item.telefone && (
+                  <Text style={styles.telefone}>📱 {formatarTelefoneExibicao(item.telefone)}</Text>
+                )}
                 <Text style={styles.det}>💅 {item.serv}</Text>
                 {item.observacoes ? (
                   <Text style={styles.obs}>📝 {item.observacoes}</Text>
                 ) : null}
+                
+                {item.telefone && (
+                  <TouchableOpacity 
+                    style={styles.whatsappButton}
+                    onPress={() => enviarLembrete(item)}
+                  >
+                    <Text style={styles.whatsappButtonText}>💬 Enviar Lembrete</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           </Swipeable>
@@ -345,6 +384,11 @@ const styles = StyleSheet.create({
     color: "#333",
     marginBottom: 5,
   },
+  telefone: {
+    fontSize: 14,
+    color: "#1565c0",
+    marginBottom: 5,
+  },
   det: {
     fontSize: 15,
     color: "#666",
@@ -355,6 +399,19 @@ const styles = StyleSheet.create({
     color: "#999",
     marginTop: 5,
     fontStyle: "italic",
+  },
+  whatsappButton: {
+    backgroundColor: '#25D366',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 10,
+    alignSelf: 'flex-start',
+  },
+  whatsappButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   deleteAction: {

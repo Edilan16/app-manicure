@@ -1,9 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
-import { db } from '../config/Firebase';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { db, auth } from '../config/Firebase';
+import { collection, onSnapshot, query, orderBy, limit, where, deleteDoc, doc } from 'firebase/firestore';
+import { signOut } from 'firebase/auth';
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
+import { 
+  getCurrentMonthRange, 
+  verificarArquivamentoNecessario, 
+  arquivarMesAnterior 
+} from '../utils/monthlyReportManager';
 
 export default function DashboardScreen({ navigation }) {
   const [receita, setReceita] = useState(0);
@@ -12,12 +18,46 @@ export default function DashboardScreen({ navigation }) {
   const [cartao, setCartao] = useState(0);
   const [dinheiro, setDinheiro] = useState(0);
   const [extrato, setExtrato] = useState([]);
+  const [mesAtual, setMesAtual] = useState('');
 
   // --------------------------------------------------------------------
-  // ✓ SOMATÓRIO (receita / despesa / métodos)
+  // ✓ VERIFICAR E ARQUIVAR MÊS ANTERIOR (roda uma vez ao abrir)
   // --------------------------------------------------------------------
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, "financeiro"), (snapshot) => {
+    const verificarEArquivar = async () => {
+      try {
+        const necessario = await verificarArquivamentoNecessario();
+        if (necessario) {
+          const resultado = await arquivarMesAnterior();
+          if (resultado.success && resultado.relatorio) {
+            console.log('Mês anterior arquivado automaticamente');
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao verificar arquivamento:', error);
+      }
+    };
+
+    verificarEArquivar();
+    
+    // Definir mês atual para exibição
+    const { mesAno } = getCurrentMonthRange();
+    setMesAtual(mesAno);
+  }, []);
+
+  // --------------------------------------------------------------------
+  // ✓ SOMATÓRIO (receita / despesa / métodos) - APENAS MÊS ATUAL
+  // --------------------------------------------------------------------
+  useEffect(() => {
+    const { start, end } = getCurrentMonthRange();
+    
+    const q = query(
+      collection(db, "financeiro"),
+      where("data", ">=", start),
+      where("data", "<=", end)
+    );
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       let totalReceita = 0;
       let totalDespesa = 0;
       let totalPix = 0;
@@ -61,10 +101,19 @@ export default function DashboardScreen({ navigation }) {
   }, []);
 
   // --------------------------------------------------------------------
-  // ✓ CARREGA ÚLTIMOS LANÇAMENTOS
+  // ✓ CARREGA ÚLTIMOS LANÇAMENTOS - APENAS MÊS ATUAL
   // --------------------------------------------------------------------
   useEffect(() => {
-    const q = query(collection(db, "financeiro"), orderBy("data", "desc"), limit(10));
+    const { start, end } = getCurrentMonthRange();
+    
+    const q = query(
+      collection(db, "financeiro"),
+      where("data", ">=", start),
+      where("data", "<=", end),
+      orderBy("data", "desc"),
+      limit(10)
+    );
+    
     const unsubscribeExtrato = onSnapshot(q, (snapshot) => {
       const dados = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setExtrato(dados);
@@ -283,12 +332,86 @@ export default function DashboardScreen({ navigation }) {
   }
 
   // --------------------------------------------------------------------
+  // ✓ FUNÇÃO DE LOGOUT
+  // --------------------------------------------------------------------
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigation.replace('Login');
+    } catch (error) {
+      console.error('Erro ao sair:', error);
+      Alert.alert('Erro', 'Não foi possível sair');
+    }
+  };
+
+  // --------------------------------------------------------------------
+  // ✓ FUNÇÃO PARA EXCLUIR LANÇAMENTO
+  // --------------------------------------------------------------------
+  const excluirLancamento = async (lancamento) => {
+    const valor = Number(lancamento.receita || lancamento.despesa || 0);
+    const tipo = lancamento.receita > 0 ? "Receita" : "Despesa";
+    const descricao = lancamento.descricaoReceita || lancamento.descricaoDespesa || "Lançamento";
+
+    if (Platform.OS === 'web') {
+      const confirmar = window.confirm(
+        `Deseja realmente excluir este lançamento?\n\n${tipo}: R$ ${valor.toFixed(2)}\n${descricao}`
+      );
+      if (!confirmar) return;
+    } else {
+      Alert.alert(
+        'Excluir Lançamento',
+        `Deseja realmente excluir este lançamento?\n\n${tipo}: R$ ${valor.toFixed(2)}\n${descricao}`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Excluir',
+            style: 'destructive',
+            onPress: async () => {
+              await executarExclusao(lancamento.id);
+            }
+          }
+        ]
+      );
+      return;
+    }
+
+    await executarExclusao(lancamento.id);
+  };
+
+  const executarExclusao = async (id) => {
+    try {
+      await deleteDoc(doc(db, 'financeiro', id));
+      
+      if (Platform.OS === 'web') {
+        window.alert('Lançamento excluído com sucesso!');
+      } else {
+        Alert.alert('Sucesso', 'Lançamento excluído com sucesso!');
+      }
+    } catch (error) {
+      console.error('Erro ao excluir:', error);
+      if (Platform.OS === 'web') {
+        window.alert('Erro ao excluir lançamento');
+      } else {
+        Alert.alert('Erro', 'Não foi possível excluir o lançamento');
+      }
+    }
+  };
+
+  // --------------------------------------------------------------------
   // ✓ TELA
   // --------------------------------------------------------------------
   return (
     <View style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Dashboard</Text>
+        <View style={styles.headerContainer}>
+          <View>
+            <Text style={styles.title}>Dashboard</Text>
+            <Text style={styles.subtitle}>Mês Atual: {mesAtual}</Text>
+          </View>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <Text style={styles.logoutText}>Sair</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Receitas / despesas */}
         <View style={styles.card}>
@@ -322,7 +445,15 @@ export default function DashboardScreen({ navigation }) {
         </View>
 
         {/* Últimos lançamentos */}
-        <Text style={[styles.title, { marginTop: 30 }]}>Últimos Lançamentos</Text>
+        <View style={styles.lancamentosHeader}>
+          <Text style={[styles.title, { marginTop: 30, marginBottom: 0 }]}>Últimos Lançamentos</Text>
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('GerenciarLancamentos')}
+            style={styles.verTodosButton}
+          >
+            <Text style={styles.verTodosText}>Ver Todos</Text>
+          </TouchableOpacity>
+        </View>
 
         {extrato.map((item) => {
           const valor = Number(item.receita || item.despesa || 0);
@@ -331,7 +462,7 @@ export default function DashboardScreen({ navigation }) {
 
           return (
             <View key={item.id} style={styles.extratoItem}>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={[styles.extratoTipo, { color: tipo === "Receita" ? 'green' : 'red' }]}>{tipo}</Text>
                 <Text style={styles.extratoDesc}>{descricao}</Text>
                 <Text style={styles.extratoMetodo}>{item.metodoPagamento || "-"}</Text>
@@ -343,6 +474,13 @@ export default function DashboardScreen({ navigation }) {
                   {item.data?.seconds ? new Date(item.data.seconds * 1000).toLocaleDateString("pt-BR") : "-"}
                 </Text>
               </View>
+
+              <TouchableOpacity 
+                onPress={() => excluirLancamento(item)}
+                style={styles.deleteButton}
+              >
+                <Text style={styles.deleteButtonText}>🗑️</Text>
+              </TouchableOpacity>
             </View>
           );
         })}
@@ -354,12 +492,42 @@ export default function DashboardScreen({ navigation }) {
             padding: 14,
             backgroundColor: "#4a90e2",
             marginTop: 12,
-            marginBottom: 80,
             borderRadius: 10
           }}
         >
           <Text style={{ color: "#fff", fontSize: 16, textAlign: "center", fontWeight: "bold" }}>
             Exportar Relatório em PDF
+          </Text>
+        </TouchableOpacity>
+
+        {/* Botão Relatórios Mensais */}
+        <TouchableOpacity
+          onPress={() => navigation.navigate('RelatoriosMensais')}
+          style={{
+            padding: 14,
+            backgroundColor: "#9c27b0",
+            marginTop: 12,
+            borderRadius: 10
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 16, textAlign: "center", fontWeight: "bold" }}>
+            📊 Ver Relatórios de Meses Anteriores
+          </Text>
+        </TouchableOpacity>
+
+        {/* Botão Lembretes */}
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Lembretes')}
+          style={{
+            padding: 14,
+            backgroundColor: "#25D366",
+            marginTop: 12,
+            marginBottom: 80,
+            borderRadius: 10
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 16, textAlign: "center", fontWeight: "bold" }}>
+            💬 Enviar Lembretes de Amanhã
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -396,7 +564,47 @@ export default function DashboardScreen({ navigation }) {
 // --------------------------------------------------------------------
 const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: 20, alignItems: "center" },
-  title: { fontSize: 26, fontWeight: "bold", marginBottom: 10, color: "#444" },
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    width: '100%',
+    marginBottom: 15
+  },
+  title: { fontSize: 26, fontWeight: "bold", marginBottom: 5, color: "#444" },
+  subtitle: { fontSize: 14, color: "#666", marginBottom: 15 },
+  logoutButton: {
+    backgroundColor: '#ff5252',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  logoutText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  lancamentosHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 30,
+  },
+
+  verTodosButton: {
+    backgroundColor: '#1565c0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+
+  verTodosText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
 
   card: {
     width: "100%",
@@ -436,10 +644,22 @@ const styles = StyleSheet.create({
   extratoItem: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#ddd",
     width: "100%"
+  },
+
+  deleteButton: {
+    marginLeft: 10,
+    padding: 8,
+    backgroundColor: '#ffebee',
+    borderRadius: 8,
+  },
+
+  deleteButtonText: {
+    fontSize: 18,
   },
 
   extratoTipo: { fontSize: 16, fontWeight: "bold" },

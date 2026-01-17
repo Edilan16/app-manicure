@@ -18,6 +18,7 @@ export default function NovoAgendamento() {
   const navigation = useNavigation();
 
   const [nome, setNome] = useState("");
+  const [telefone, setTelefone] = useState("");
   const [serv, setServ] = useState("");
   const [observacoes, setObservacoes] = useState("");
 
@@ -132,6 +133,7 @@ export default function NovoAgendamento() {
     try {
       await addDoc(collection(db, "agendamentos"), {
         nome,
+        telefone: telefone.replace(/\D/g, ''), // Salva só números
         serv,
         observacoes,
         data: data.toISOString().slice(0, 10),
@@ -196,6 +198,29 @@ export default function NovoAgendamento() {
           placeholder="Ex: Maria Silva"
           placeholderTextColor="#999"
         />
+
+        <Text style={styles.label}>📱 Telefone (WhatsApp)</Text>
+        <TextInput
+          style={[styles.input, telefone.trim() && styles.inputPreenchido]}
+          value={telefone}
+          onChangeText={(text) => {
+            // Formata enquanto digita
+            const numeros = text.replace(/\D/g, '');
+            let formatado = numeros;
+            if (numeros.length > 2) {
+              formatado = `(${numeros.slice(0, 2)}) ${numeros.slice(2)}`;
+            }
+            if (numeros.length > 7) {
+              formatado = `(${numeros.slice(0, 2)}) ${numeros.slice(2, 7)}-${numeros.slice(7, 11)}`;
+            }
+            setTelefone(formatado);
+          }}
+          placeholder="(11) 99999-9999"
+          placeholderTextColor="#999"
+          keyboardType="phone-pad"
+          maxLength={15}
+        />
+        <Text style={styles.hint}>Para enviar lembretes por WhatsApp</Text>
 
         <Text style={styles.label}>💅 Serviço</Text>
         <TextInput
@@ -422,6 +447,7 @@ const styles = StyleSheet.create({
     color: "#999",
     marginTop: 4,
     marginLeft: 4,
+    marginBottom: 15,
   },
 
   inputObservacoes: {

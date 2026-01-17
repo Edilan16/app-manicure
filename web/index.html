@@ -6,9 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no" />
     
     <!-- Favicon e ícones PWA -->
-    <link rel="icon" type="image/png" href="/image/logo.png" />
-    <link rel="apple-touch-icon" href="/image/logo.png" />
-    <link rel="shortcut icon" href="/image/logo.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon.png" />
+    <link rel="shortcut icon" href="/icon.png" />
+    <link rel="manifest" href="/manifest.json" />
     
     <title>App Manicure</title>
     
@@ -57,5 +59,47 @@
   <body>
     <noscript>Você precisa habilitar o JavaScript para executar este app.</noscript>
     <div id="root"></div>
+    
+    <!-- Service Worker para auto-atualização -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/service-worker.js')
+            .then((registration) => {
+              console.log('Service Worker registrado com sucesso:', registration.scope);
+              
+              // Verificar atualizações a cada 30 segundos
+              setInterval(() => {
+                registration.update();
+              }, 30000);
+              
+              // Detectar nova versão disponível
+              registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    // Nova versão disponível - recarregar automaticamente
+                    console.log('Nova versão disponível - atualizando...');
+                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                    window.location.reload();
+                  }
+                });
+              });
+            })
+            .catch((error) => {
+              console.log('Erro ao registrar Service Worker:', error);
+            });
+          
+          // Recarregar quando o service worker for atualizado
+          let refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!refreshing) {
+              refreshing = true;
+              window.location.reload();
+            }
+          });
+        });
+      }
+    </script>
   </body>
 </html>
